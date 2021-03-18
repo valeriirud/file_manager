@@ -33,6 +33,8 @@ public slots:
     void copy_cmd(void);
 	void leftDoubleClickHandler(int, int);
     void rightDoubleClickHandler(int, int);
+    void leftClickHandler(int, int);
+    void rightClickHandler(int, int);
 
 private:
     QSplitter* m_splitter;
