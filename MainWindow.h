@@ -28,9 +28,8 @@ public:
 	MainWindow(QWidget *parent = 0);
 	~MainWindow();
 
-	
 public slots:
-    void copy_cmd(void);
+    void cmdCopy(void);
 	void leftDoubleClickHandler(int, int);
     void rightDoubleClickHandler(int, int);
     void leftClickHandler(int, int);
@@ -56,7 +55,8 @@ private:
     void showDir(QTableWidget*, QDir);
     QDir showParentDir(QTableWidget*,QDir);
     void readSettings();
-    QDir doubleClickHandler(QTableWidget*, int, int, QDir);    
+    QDir doubleClickHandler(QTableWidget*, int, int, QDir);   
+    void clearSelection(QTableWidget*);
     std::string exec(std::string);
 protected:
 	void closeEvent(QCloseEvent*);

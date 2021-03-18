@@ -15,6 +15,7 @@
 #include <QCoreApplication>
 #include <QFileIconProvider>
 #include <QDateTime>
+#include <QDebug>
 #include <QMenuBar>
 #include <QPixmap>
 #include <QStatusBar>
@@ -189,7 +190,9 @@ void MainWindow::showRightTable()
 {
     m_rightTable = new QTableWidget;
     showTable(m_rightTable, "rightTable");
-    connect(m_rightTable, SIGNAL(cellDoubleClicked(int,int)), 
+    QObject::connect(m_rightTable, SIGNAL(cellClicked(int,int)), 
+                    this, SLOT(rightClickHandler(int,int)));
+    QObject::connect(m_rightTable, SIGNAL(cellDoubleClicked(int,int)), 
             this, SLOT(rightDoubleClickHandler(int,int)));
 }
 
@@ -235,11 +238,19 @@ void MainWindow::restoreTableSettings(QTableWidget* table, QString key)
 void MainWindow::leftClickHandler(int row, int col)
 {
     m_active = ActiveTable::LEFT;
+    
+    std::cout << "active:" << m_active << std::endl;
+    
+    clearSelection(m_rightTable);
 }
 
 void MainWindow::rightClickHandler(int row, int col)
 {
     m_active = ActiveTable::RIGHT;
+    
+    std::cout << "active:" << m_active << std::endl;
+    
+    clearSelection(m_leftTable);
 }
 
 void MainWindow::leftDoubleClickHandler(int row, int col)
@@ -287,7 +298,7 @@ void MainWindow::initToolbar()
     toolbar->addAction(QIcon(newpix), "New Folder");
     
     QAction *copy = toolbar->addAction(QIcon(copypix), "Copy");
-    QObject::connect(copy, SIGNAL(triggered()), this, SLOT(copy_cmd()));
+    QObject::connect(copy, SIGNAL(triggered()), this, SLOT(cmdCopy()));
     
     toolbar->addAction(QIcon(movepix), "Move");
     toolbar->addAction(QIcon(deletepix), "Delete");
@@ -334,8 +345,47 @@ QDir MainWindow::doubleClickHandler(QTableWidget* table,
     return dir;
 }
 
-void MainWindow::copy_cmd()
+void MainWindow::cmdCopy()
 {
+    QTableWidget* tableSrc;
+    QDir dirSrc;
+    QDir dirDst;
+    switch(m_active)
+    {
+        case ActiveTable::LEFT:
+            dirSrc = m_leftDir;
+            dirDst = m_rightDir;
+            tableSrc = m_leftTable;
+            break;
+        case ActiveTable::RIGHT:
+            dirSrc = m_rightDir;
+            dirDst = m_leftDir;
+            tableSrc = m_rightTable;
+            break;
+        default:
+            return;
+    }
+    
+    QFileInfoList files = dirSrc.entryInfoList();
+    QString pathDst = dirDst.absolutePath();
+    
+    int cols = tableSrc->columnCount();
+    QList<QTableWidgetItem*> list = tableSrc->selectedItems();
+    int items = list.count();    
+    for(int i = 0; i < items; i ++)
+    {
+        QTableWidgetItem* item = list.at(i);
+        int row = item->row();
+        // skip "." (row - 1)
+        // skip ".." (row)
+        QFileInfo fileInfo = files.at(row + 1);
+        QString pathSrc = fileInfo.absoluteFilePath();
+        QString cmd = QString(CMP_COPY).arg(pathSrc).arg(pathDst);
+        qDebug() << qPrintable(cmd);
+        
+        i += cols;
+    }
+    
     statusBar()->showMessage("Copy CMD");
 }
 
@@ -369,4 +419,14 @@ std::string MainWindow::exec(std::string cmd)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     return output;
+}
+
+void MainWindow::clearSelection(QTableWidget* table)
+{
+    QList<QTableWidgetSelectionRange> list = table->selectedRanges();
+    QTableWidgetSelectionRange range;
+    foreach(range, list)
+    {
+        table->setRangeSelected(range, false);
+    }
 }

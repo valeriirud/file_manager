@@ -5,4 +5,6 @@
 #define APPLICATION_NAME "fm.app"
 #define APPLICATION_TITLE "File Manager 0.1"
 
+#define CMP_COPY "rsync -ah --progress %1 %2"
+
 #endif // DEFINITIONS_H
