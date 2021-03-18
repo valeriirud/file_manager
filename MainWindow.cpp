@@ -343,7 +343,7 @@ std::string MainWindow::exec(std::string cmd)
 {
     char buffer[BUF_SIZE];
     std::string output = "";
-    //std::cout << CMD << std::endl;
+    std::cout << CMD << std::endl;
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
