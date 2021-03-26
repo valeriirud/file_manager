@@ -16,7 +16,7 @@ QT += widgets
 
 TARGET = fm
 
-HEADERS += MainWindow.h  
+HEADERS += MainWindow.h ExecThread.h 
 
-SOURCES += main.cpp MainWindow.cpp
+SOURCES += main.cpp MainWindow.cpp ExecThread.cpp
 

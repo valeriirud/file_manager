@@ -43,6 +43,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     initMenu();
     initToolbar();
+    initStatusbar();
     
     showLeftTable();    
     showRightTable();
@@ -58,13 +59,18 @@ MainWindow::MainWindow(QWidget *parent)
 	}
 	
 	setCentralWidget(m_splitter);
-    
+    m_leftMutex.lock();
     showDir(m_leftTable, m_leftDir);
+    m_leftMutex.unlock();
+    m_rightMutex.lock();
     showDir(m_rightTable, m_rightDir);
+    m_rightMutex.unlock();
     
-    statusBar()->showMessage("");
+    showMessage("");
     
     m_active = ActiveTable::NONE;
+    
+    m_execThread = new ExecThread(this);
 }
 
 
@@ -81,6 +87,12 @@ void MainWindow::closeEvent(QCloseEvent* event)
     
     saveTableSettings(m_leftTable, "leftTable");
     saveTableSettings(m_rightTable, "rightTable");
+    m_leftMutex.lock();
+    saveTableDir(m_leftDir, "leftTable");
+    m_leftMutex.unlock();
+    m_rightMutex.lock();
+    saveTableDir(m_rightDir, "rightTable");
+    m_rightMutex.unlock();
 
 	QMainWindow::closeEvent(event);
 }
@@ -132,6 +144,12 @@ QIcon MainWindow::getFileIcon(QFileInfo fileInfo)
     return icon;
 }
 
+void MainWindow::showDir(QTableWidget* table, QString path)
+{
+    QDir dir(path);
+    showDir(table, dir);
+}
+
 void MainWindow::showDir(QTableWidget* table, QDir dir)
 {
     table->setRowCount(1);
@@ -178,7 +196,7 @@ void MainWindow::showDir(QTableWidget* table, QDir dir)
 
 void MainWindow::showLeftTable()
 {
-    m_leftTable = new QTableWidget;
+    m_leftTable = new QTableWidget(this);
     showTable(m_leftTable, "leftTable");
     QObject::connect(m_leftTable, SIGNAL(cellClicked(int,int)), 
                     this, SLOT(leftClickHandler(int,int)));
@@ -188,7 +206,7 @@ void MainWindow::showLeftTable()
 
 void MainWindow::showRightTable()
 {
-    m_rightTable = new QTableWidget;
+    m_rightTable = new QTableWidget(this);
     showTable(m_rightTable, "rightTable");
     QObject::connect(m_rightTable, SIGNAL(cellClicked(int,int)), 
                     this, SLOT(rightClickHandler(int,int)));
@@ -220,6 +238,24 @@ void MainWindow::saveTableSettings(QTableWidget* table, QString key)
         w = table->columnWidth(i);
         settings.setValue(key + "/column" + QString::number(i), w);
     }        
+}
+
+void MainWindow::saveTableDir(QDir dir, QString key)
+{
+    QSettings settings(DOMAIN_NAME, APPLICATION_NAME);
+    settings.setValue(key + "/dir", dir.absolutePath());       
+}
+
+QString MainWindow::getTableDir(QString key)
+{
+    QString path = "";
+    QSettings settings(DOMAIN_NAME, APPLICATION_NAME);
+    QVariant val = settings.value(key + "/dir", "");
+    if (!val.isNull() && val.isValid())
+    {
+        path = val.toString();
+    }
+    return path;
 }
 
 void MainWindow::restoreTableSettings(QTableWidget* table, QString key)
@@ -256,21 +292,31 @@ void MainWindow::rightClickHandler(int row, int col)
 void MainWindow::leftDoubleClickHandler(int row, int col)
 {
     m_active = ActiveTable::LEFT;
+    m_leftMutex.lock();
     m_leftDir = doubleClickHandler(m_leftTable, row, col, m_leftDir);
-    statusBar()->showMessage(m_leftDir.absolutePath());
+    showMessage(m_leftDir.absolutePath());
+    m_leftMutex.unlock();
 }
 
 void MainWindow::rightDoubleClickHandler(int row, int col)
 {
     m_active = ActiveTable::RIGHT;
+    m_rightMutex.lock();
     m_rightDir = doubleClickHandler(m_rightTable, row, col, m_rightDir);
-    statusBar()->showMessage(m_rightDir.absolutePath());
+    showMessage(m_rightDir.absolutePath());
+    m_rightMutex.unlock();
 }
 
 void MainWindow::readSettings()
 {
-    m_leftDir = QDir("");
-    m_rightDir = QDir("");
+    QString path = getTableDir("leftTable");
+    m_leftMutex.lock();
+    m_leftDir = QDir(path);
+    m_leftMutex.unlock();
+    path = getTableDir("rightTable");
+    m_rightMutex.lock();
+    m_rightDir = QDir(path);
+    m_rightMutex.unlock();
 }
 
 void MainWindow::initMenu()
@@ -284,6 +330,15 @@ void MainWindow::initMenu()
 
 }
 
+void MainWindow::initStatusbar()
+{
+    QStatusBar* sb = statusBar();
+    m_labelStatus1 = new QLabel(sb);
+    sb->addWidget(m_labelStatus1);
+    m_labelStatus2 = new QLabel(sb);
+    sb->addWidget(m_labelStatus2);
+}
+
 void MainWindow::initToolbar()
 {
     QPixmap newpix("icons/folder-new.png");
@@ -295,13 +350,18 @@ void MainWindow::initToolbar()
     
     QToolBar *toolbar = addToolBar("main toolbar");
     toolbar->setObjectName("MainToolbar");
-    toolbar->addAction(QIcon(newpix), "New Folder");
     
-    QAction *copy = toolbar->addAction(QIcon(copypix), "Copy");
-    QObject::connect(copy, SIGNAL(triggered()), this, SLOT(cmdCopy()));
+    QAction *newFolderAction = toolbar->addAction(QIcon(newpix), "New Folder");
+    QObject::connect(newFolderAction, SIGNAL(triggered()), this, SLOT(cmdNewFolder()));
+    
+    QAction *copyAction = toolbar->addAction(QIcon(copypix), "Copy");
+    QObject::connect(copyAction, SIGNAL(triggered()), this, SLOT(cmdCopy()));
     
     toolbar->addAction(QIcon(movepix), "Move");
-    toolbar->addAction(QIcon(deletepix), "Delete");
+    
+    QAction *deleteAction = toolbar->addAction(QIcon(deletepix), "Delete");
+    QObject::connect(deleteAction, SIGNAL(triggered()), this, SLOT(cmdDelete()));
+    
     toolbar->addAction(QIcon(zippix), "Compress");
     toolbar->addSeparator();
 
@@ -330,95 +390,196 @@ QDir MainWindow::doubleClickHandler(QTableWidget* table,
         return newDir;
     }
     
+    qDebug("doubleClickHandler1");
+    
     QFileInfoList list = dir.entryInfoList();
     // skip "." (row - 1)
     // skip ".." (row)
     QFileInfo fileInfo = list.at(row + 1);
     bool b = fileInfo.isDir();
+    
+    qDebug("doubleClickHandler2");
+    
     if(b)
     {
         QString newName = fileInfo.absoluteFilePath();
+        
+        qDebug("doubleClickHandler3");
+        
         QDir newDir = QDir(newName);
+        
+        qDebug("doubleClickHandler4");
+        
         showDir(table, newDir);
+        
+        qDebug("doubleClickHandler5");
+        
         return newDir;
     }
+    
+    qDebug("doubleClickHandler6");
+    
     return dir;
+}
+
+QString MainWindow::getSrcPath()
+{
+    QString path = "";
+    switch(m_active)
+    {
+        case ActiveTable::LEFT:
+            m_leftMutex.lock();
+            path = m_leftDir.absolutePath();
+            m_leftMutex.unlock();
+            break;
+        case ActiveTable::RIGHT:
+            m_rightMutex.lock();
+            path = m_rightDir.absolutePath();
+            m_rightMutex.unlock();
+            break;
+        default:
+            break;;
+    }
+    return path;
+}
+
+QString MainWindow::getDstPath()
+{
+    QString path = "";
+    switch(m_active)
+    {
+        case ActiveTable::RIGHT:
+            m_leftMutex.lock();
+            path = m_leftDir.absolutePath();
+            m_leftMutex.unlock();
+            break;
+        case ActiveTable::LEFT:
+            m_rightMutex.lock();
+            path = m_rightDir.absolutePath();
+            m_rightMutex.unlock();
+            break;
+        default:
+            break;
+    }
+    return path;
+}
+
+QTableWidget* MainWindow::getDstTable()
+{
+    QTableWidget* table = nullptr;
+    switch(m_active)
+    {
+        case ActiveTable::RIGHT:
+            table = m_leftTable;
+            break;
+        case ActiveTable::LEFT:
+            table = m_rightTable;
+            break;
+        default:
+            break;;
+    }
+    return table;
+}
+
+QTableWidget* MainWindow::getSrcTable()
+{
+    QTableWidget* table = nullptr;
+    switch(m_active)
+    {
+        case ActiveTable::LEFT:
+            table = m_leftTable;
+            break;
+        case ActiveTable::RIGHT:
+            table = m_rightTable;
+            break;
+        default:
+            break;;
+    }
+    return table;
 }
 
 void MainWindow::cmdCopy()
 {
-    QTableWidget* tableSrc;
-    QDir dirSrc;
-    QDir dirDst;
-    switch(m_active)
-    {
-        case ActiveTable::LEFT:
-            dirSrc = m_leftDir;
-            dirDst = m_rightDir;
-            tableSrc = m_leftTable;
-            break;
-        case ActiveTable::RIGHT:
-            dirSrc = m_rightDir;
-            dirDst = m_leftDir;
-            tableSrc = m_rightTable;
-            break;
-        default:
-            return;
-    }
+    QTableWidget* tableSrc = getSrcTable();
+    QTableWidget* tableDst = getDstTable();
+    QString pathSrc = getSrcPath();
+    QDir dirSrc(pathSrc);
     
-    QFileInfoList files = dirSrc.entryInfoList();
-    QString pathDst = dirDst.absolutePath();
+    QString pathDst = getDstPath();
+    QDir dirDst(pathDst);
+    
+    QFileInfoList files = dirSrc.entryInfoList();    
     
     int cols = tableSrc->columnCount();
     QList<QTableWidgetItem*> list = tableSrc->selectedItems();
     int items = list.count();    
+    qDebug() << qPrintable(QString("items:%1").arg(items));
     for(int i = 0; i < items; i ++)
     {
+        qDebug() << qPrintable(QString("[%1]").arg(i));
         QTableWidgetItem* item = list.at(i);
         int row = item->row();
         // skip "." (row - 1)
         // skip ".." (row)
         QFileInfo fileInfo = files.at(row + 1);
-        QString pathSrc = fileInfo.absoluteFilePath();
-        QString cmd = QString(CMP_COPY).arg(pathSrc).arg(pathDst);
+        QString path = fileInfo.absoluteFilePath();
+        qDebug() << qPrintable(QString("\t%1").arg(path));
+        QString cmd = QString(CMP_COPY).arg(path).arg(pathDst);
         qDebug() << qPrintable(cmd);
+        
+        //exec(cmd.toStdString());
+        m_execThread->init(cmd);
+        m_execThread->start();
+        //bool b = false;
+        //while(! b)
+        //{
+        //    QThread::msleep(100);
+        //    b = m_execThread->isCompleted();
+        //}
         
         i += cols;
     }
     
-    statusBar()->showMessage("Copy CMD");
+    showDir(tableDst, pathDst);
+    showMessage("Copy CMD");
 }
 
-std::string MainWindow::exec(std::string cmd) 
+void MainWindow::cmdNewFolder(void)
 {
-    char buffer[BUF_SIZE];
-    std::string output = "";
-    std::cout << cmd << std::endl;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
-    }
-    FILE* f = pipe.get();
-    // wait while command starting
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    while (! feof(f))
+    QTableWidget* table = getSrcTable();
+    QString pathSrc = getSrcPath();
+    QDir dirSrc(pathSrc);
+    dirSrc.mkdir("New Folder");
+    showDir(table, dirSrc);
+}
+
+void MainWindow::cmdDelete(void)
+{
+    QTableWidget* table = getSrcTable();
+    QString pathSrc = getSrcPath();
+    QDir dirSrc(pathSrc);
+    QFileInfoList files = dirSrc.entryInfoList();
+    int cols = table->columnCount();
+    QList<QTableWidgetItem*> list = table->selectedItems();
+    int items = list.count();    
+    qDebug() << qPrintable(QString("items:%1").arg(items));
+    for(int i = 0; i < items; i ++)
     {
-        size_t rd = fread(buffer, 1, 1, f);
-        if(rd > 0)
-        {
-            if(buffer[0] == 0xa || buffer[0] == 0xd)
-            {
-                statusBar()->showMessage(QString::fromStdString(output));
-                output = "";
-            }
-            else
-            {
-                output += buffer[0];
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        qDebug() << qPrintable(QString("[%1]").arg(i));
+        QTableWidgetItem* item = list.at(i);
+        int row = item->row();
+        // skip "." (row - 1)
+        // skip ".." (row)
+        QFileInfo fileInfo = files.at(row + 1);
+        QString path = fileInfo.absoluteFilePath();
+        qDebug() << qPrintable(QString("\t%1").arg(path));
+        QString cmd = QString(CMP_DELETE).arg(path);
+        
+        m_execThread->init(cmd);
+        m_execThread->start();
+        
+        i += cols;
     }
-    return output;
 }
 
 void MainWindow::clearSelection(QTableWidget* table)
@@ -430,3 +591,39 @@ void MainWindow::clearSelection(QTableWidget* table)
         table->setRangeSelected(range, false);
     }
 }
+
+void MainWindow::showMessage1(QString s)
+{
+    showDirs();
+    m_labelStatus1->setText(s);
+}
+
+void MainWindow::showMessage2(QString s)
+{
+    m_labelStatus2->setText(s);
+}
+
+void MainWindow::showMessage(QString s)
+{
+    m_labelStatus1->setText(s);
+}
+
+void MainWindow::cmdCompleted()
+{
+    showDirs();
+    m_labelStatus1->setText("");
+    m_labelStatus2->setText("");
+}
+
+void MainWindow::showDirs()
+{
+    m_leftMutex.lock();
+    QString path = m_leftDir.absolutePath();
+    m_leftMutex.unlock();
+    showDir(m_leftTable, path);
+    m_rightMutex.lock();
+    path = m_rightDir.absolutePath();
+    m_rightMutex.unlock();
+    showDir(m_rightTable, path);
+}
+
