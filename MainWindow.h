@@ -47,6 +47,7 @@ public slots:
     void showMessage1(QString);
     void showMessage2(QString);
     void showMessage(QString);
+    void showMessage(QString, QString);
     void cmdCompleted();
 
 private:
@@ -79,6 +80,7 @@ private:
     QDir showParentDir(QTableWidget*,QDir);
     void readSettings();
     QDir doubleClickHandler(QTableWidget*, int, int, QDir);   
+    QDir doubleClickHandler(QTableWidget*, int, int, QString); 
     void clearSelection(QTableWidget*);
     QString getSrcPath();
     QString getDstPath();
@@ -86,6 +88,10 @@ private:
     QTableWidget* getDstTable();
     void saveTableDir(QDir, QString);
     QString getTableDir(QString);
+    QString getLeftDirPath();
+    QString getRightDirPath();
+    void setLeftDirPath(QString);
+    void setRightDirPath(QString);
 protected:
 	void closeEvent(QCloseEvent*);
 };

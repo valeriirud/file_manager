@@ -22,8 +22,9 @@ public:
     bool isCompleted();
 	QString getResult();
 signals:
-	void sigShowMessage1(QString);
-    void sigShowMessage2(QString);
+	//void sigShowMessage1(QString);
+    //void sigShowMessage2(QString);
+    void sigShowMessage(QString, QString);
     void sigCmdCompleted();
 private:
     MainWindow* m_mainWindow;

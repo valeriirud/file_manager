@@ -59,12 +59,8 @@ MainWindow::MainWindow(QWidget *parent)
 	}
 	
 	setCentralWidget(m_splitter);
-    m_leftMutex.lock();
     showDir(m_leftTable, m_leftDir);
-    m_leftMutex.unlock();
-    m_rightMutex.lock();
     showDir(m_rightTable, m_rightDir);
-    m_rightMutex.unlock();
     
     showMessage("");
     
@@ -87,12 +83,15 @@ void MainWindow::closeEvent(QCloseEvent* event)
     
     saveTableSettings(m_leftTable, "leftTable");
     saveTableSettings(m_rightTable, "rightTable");
-    m_leftMutex.lock();
-    saveTableDir(m_leftDir, "leftTable");
-    m_leftMutex.unlock();
-    m_rightMutex.lock();
-    saveTableDir(m_rightDir, "rightTable");
-    m_rightMutex.unlock();
+    
+    QString path = getLeftDirPath();
+    //qDebug(qPrintable("left:" + path));
+    QDir dir = QDir(path);
+    saveTableDir(dir, "leftTable");
+    path = getRightDirPath();
+    //qDebug(qPrintable("right:" + path));
+    dir = QDir(path);
+    saveTableDir(dir, "rightTable");
 
 	QMainWindow::closeEvent(event);
 }
@@ -152,6 +151,31 @@ void MainWindow::showDir(QTableWidget* table, QString path)
 
 void MainWindow::showDir(QTableWidget* table, QDir dir)
 {
+    QStringList selectedNames;
+    QList<QTableWidgetItem*> listItems = table->selectedItems();
+    int items = listItems.count();  
+    if(items > 1)
+    {
+        for(int i = 0; i < items; i ++)
+        {
+            QTableWidgetItem* itemName = listItems.at(i + ITEM_NAME);
+            QTableWidgetItem* itemType = listItems.at(i + ITEM_TYPE); 
+            QString name = itemName->text();
+            QString type = itemType->text();
+            QString s = name; 
+            if(type.length() > 0)
+            {
+                s += "." + type;
+            }
+            
+            selectedNames.append(s);            
+            i += ITEMS_COUNT - 1;            
+        }
+    }
+    
+    
+    table->setSelectionMode(QAbstractItemView::MultiSelection);
+    
     table->setRowCount(1);
     
     QTableWidgetItem *itemParent = new QTableWidgetItem("..");
@@ -167,6 +191,7 @@ void MainWindow::showDir(QTableWidget* table, QDir dir)
         {
             continue;
         }
+        
         QString fileName = fileInfo.baseName();
         QString fileType = fileInfo.completeSuffix();
         QDateTime created = fileInfo.lastModified();
@@ -191,7 +216,14 @@ void MainWindow::showDir(QTableWidget* table, QDir dir)
         table->setItem(row, 3, itemSize);
         table->setItem(row, 4, itemOwner);
         table->setItem(row, 5, itemDateTime);
+        
+        if(selectedNames.contains(fileInfo.fileName()))
+        {
+            table->selectRow(row);
+        }
     }
+    
+    table->setSelectionMode(QAbstractItemView::ExtendedSelection);
 }
 
 void MainWindow::showLeftTable()
@@ -220,7 +252,7 @@ void MainWindow::showTable(QTableWidget* table, QString key)
     header<<""<<"name"<<"type"<<"size"<<"owner"<<"modified";
     
     table->setRowCount(1); 
-    table->setColumnCount(6);
+    table->setColumnCount(ITEMS_COUNT);
     table->setHorizontalHeaderLabels(header);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -233,7 +265,7 @@ void MainWindow::saveTableSettings(QTableWidget* table, QString key)
 {
     int w = 0;
     QSettings settings(DOMAIN_NAME, APPLICATION_NAME);
-    for(int i = 0; i < 6; i ++)
+    for(int i = 0; i < ITEMS_COUNT; i ++)
     {
         w = table->columnWidth(i);
         settings.setValue(key + "/column" + QString::number(i), w);
@@ -261,7 +293,7 @@ QString MainWindow::getTableDir(QString key)
 void MainWindow::restoreTableSettings(QTableWidget* table, QString key)
 {
     QSettings settings(DOMAIN_NAME, APPLICATION_NAME);
-    for(int i = 0; i < 6; i ++)
+    for(int i = 0; i < ITEMS_COUNT; i ++)
     {
         QVariant w = settings.value(key + "/column" + QString::number(i));
         if (!w.isNull() && w.isValid())
@@ -273,61 +305,60 @@ void MainWindow::restoreTableSettings(QTableWidget* table, QString key)
 
 void MainWindow::leftClickHandler(int row, int col)
 {
+    Q_UNUSED(row);
+    Q_UNUSED(col);
     m_active = ActiveTable::LEFT;
-    
-    std::cout << "active:" << m_active << std::endl;
-    
     clearSelection(m_rightTable);
+    QString path = getLeftDirPath();
+    showMessage(path);
 }
 
 void MainWindow::rightClickHandler(int row, int col)
 {
-    m_active = ActiveTable::RIGHT;
-    
-    std::cout << "active:" << m_active << std::endl;
-    
+    Q_UNUSED(row);
+    Q_UNUSED(col);
+    m_active = ActiveTable::RIGHT;    
     clearSelection(m_leftTable);
+    QString path = getRightDirPath();
+    showMessage(path);
 }
 
 void MainWindow::leftDoubleClickHandler(int row, int col)
 {
     m_active = ActiveTable::LEFT;
-    m_leftMutex.lock();
-    m_leftDir = doubleClickHandler(m_leftTable, row, col, m_leftDir);
-    showMessage(m_leftDir.absolutePath());
-    m_leftMutex.unlock();
+    QString path = getLeftDirPath();
+    QDir dir = doubleClickHandler(m_leftTable, row, col, path);
+    path = dir.absolutePath();
+    setLeftDirPath(path);
+    showMessage(path);
 }
 
 void MainWindow::rightDoubleClickHandler(int row, int col)
 {
     m_active = ActiveTable::RIGHT;
-    m_rightMutex.lock();
-    m_rightDir = doubleClickHandler(m_rightTable, row, col, m_rightDir);
-    showMessage(m_rightDir.absolutePath());
-    m_rightMutex.unlock();
+    QString path = getRightDirPath();
+    QDir dir = doubleClickHandler(m_rightTable, row, col, path);
+    path = dir.absolutePath();
+    setRightDirPath(path);
+    showMessage(path);
 }
 
 void MainWindow::readSettings()
 {
     QString path = getTableDir("leftTable");
-    m_leftMutex.lock();
-    m_leftDir = QDir(path);
-    m_leftMutex.unlock();
+    setLeftDirPath(path);
+    
     path = getTableDir("rightTable");
-    m_rightMutex.lock();
-    m_rightDir = QDir(path);
-    m_rightMutex.unlock();
+    setRightDirPath(path);
 }
 
 void MainWindow::initMenu()
 {
-    
     menuBar()->addMenu("&File");
     menuBar()->addMenu("&Edit");
     menuBar()->addMenu("&View");
     menuBar()->addMenu("&Simulate");
     menuBar()->addMenu("&Help");
-
 }
 
 void MainWindow::initStatusbar()
@@ -380,44 +411,36 @@ QDir MainWindow::showParentDir(QTableWidget* table, QDir dir)
     return dir;
 }
 
+QDir MainWindow::doubleClickHandler(QTableWidget* table, 
+                                    int row, int col, QString path)
+{
+    QDir dir(path);
+    return doubleClickHandler(table, row, col, dir);
+}
 
 QDir MainWindow::doubleClickHandler(QTableWidget* table, 
                                     int row, int col, QDir dir)
 {
+    Q_UNUSED(col);
+    
     if(row == 0)
     {       
         QDir newDir = showParentDir(table, dir);
         return newDir;
     }
     
-    qDebug("doubleClickHandler1");
-    
     QFileInfoList list = dir.entryInfoList();
     // skip "." (row - 1)
     // skip ".." (row)
     QFileInfo fileInfo = list.at(row + 1);
-    bool b = fileInfo.isDir();
-    
-    qDebug("doubleClickHandler2");
-    
+    bool b = fileInfo.isDir();    
     if(b)
     {
-        QString newName = fileInfo.absoluteFilePath();
-        
-        qDebug("doubleClickHandler3");
-        
+        QString newName = fileInfo.absoluteFilePath();        
         QDir newDir = QDir(newName);
-        
-        qDebug("doubleClickHandler4");
-        
-        showDir(table, newDir);
-        
-        qDebug("doubleClickHandler5");
-        
+        showDir(table, newName);
         return newDir;
     }
-    
-    qDebug("doubleClickHandler6");
     
     return dir;
 }
@@ -428,14 +451,10 @@ QString MainWindow::getSrcPath()
     switch(m_active)
     {
         case ActiveTable::LEFT:
-            m_leftMutex.lock();
-            path = m_leftDir.absolutePath();
-            m_leftMutex.unlock();
+            path = getLeftDirPath();
             break;
         case ActiveTable::RIGHT:
-            m_rightMutex.lock();
-            path = m_rightDir.absolutePath();
-            m_rightMutex.unlock();
+            path = getRightDirPath();
             break;
         default:
             break;;
@@ -449,14 +468,10 @@ QString MainWindow::getDstPath()
     switch(m_active)
     {
         case ActiveTable::RIGHT:
-            m_leftMutex.lock();
-            path = m_leftDir.absolutePath();
-            m_leftMutex.unlock();
+            path = getLeftDirPath();
             break;
         case ActiveTable::LEFT:
-            m_rightMutex.lock();
-            path = m_rightDir.absolutePath();
-            m_rightMutex.unlock();
+            path = getRightDirPath();
             break;
         default:
             break;
@@ -513,35 +528,20 @@ void MainWindow::cmdCopy()
     int cols = tableSrc->columnCount();
     QList<QTableWidgetItem*> list = tableSrc->selectedItems();
     int items = list.count();    
-    qDebug() << qPrintable(QString("items:%1").arg(items));
     for(int i = 0; i < items; i ++)
     {
-        qDebug() << qPrintable(QString("[%1]").arg(i));
         QTableWidgetItem* item = list.at(i);
         int row = item->row();
         // skip "." (row - 1)
         // skip ".." (row)
         QFileInfo fileInfo = files.at(row + 1);
         QString path = fileInfo.absoluteFilePath();
-        qDebug() << qPrintable(QString("\t%1").arg(path));
         QString cmd = QString(CMP_COPY).arg(path).arg(pathDst);
-        qDebug() << qPrintable(cmd);
-        
-        //exec(cmd.toStdString());
         m_execThread->init(cmd);
         m_execThread->start();
-        //bool b = false;
-        //while(! b)
-        //{
-        //    QThread::msleep(100);
-        //    b = m_execThread->isCompleted();
-        //}
-        
         i += cols;
     }
-    
     showDir(tableDst, pathDst);
-    showMessage("Copy CMD");
 }
 
 void MainWindow::cmdNewFolder(void)
@@ -562,23 +562,25 @@ void MainWindow::cmdDelete(void)
     int cols = table->columnCount();
     QList<QTableWidgetItem*> list = table->selectedItems();
     int items = list.count();    
-    qDebug() << qPrintable(QString("items:%1").arg(items));
+    QStringList selected;
     for(int i = 0; i < items; i ++)
     {
-        qDebug() << qPrintable(QString("[%1]").arg(i));
         QTableWidgetItem* item = list.at(i);
         int row = item->row();
         // skip "." (row - 1)
         // skip ".." (row)
         QFileInfo fileInfo = files.at(row + 1);
         QString path = fileInfo.absoluteFilePath();
-        qDebug() << qPrintable(QString("\t%1").arg(path));
+        selected.append(path); 
+        i += cols - 1;
+    }
+    
+    for(QString path: selected)
+    {
         QString cmd = QString(CMP_DELETE).arg(path);
         
         m_execThread->init(cmd);
         m_execThread->start();
-        
-        i += cols;
     }
 }
 
@@ -594,7 +596,6 @@ void MainWindow::clearSelection(QTableWidget* table)
 
 void MainWindow::showMessage1(QString s)
 {
-    showDirs();
     m_labelStatus1->setText(s);
 }
 
@@ -605,25 +606,57 @@ void MainWindow::showMessage2(QString s)
 
 void MainWindow::showMessage(QString s)
 {
-    m_labelStatus1->setText(s);
+    showMessage1(s);
+}
+
+void MainWindow::showMessage(QString s1, QString s2)
+{
+    showMessage1(s1);
+    showMessage2(s2);
+    showDirs();
 }
 
 void MainWindow::cmdCompleted()
 {
     showDirs();
-    m_labelStatus1->setText("");
-    m_labelStatus2->setText("");
+    showMessage("", "");
 }
 
 void MainWindow::showDirs()
 {
+    QString path = getLeftDirPath();
+    showDir(m_leftTable, path);
+    path = getRightDirPath();
+    showDir(m_rightTable, path);
+}
+
+QString MainWindow::getLeftDirPath()
+{
     m_leftMutex.lock();
     QString path = m_leftDir.absolutePath();
     m_leftMutex.unlock();
-    showDir(m_leftTable, path);
+    return path;
+}
+
+void MainWindow::setLeftDirPath(QString path)
+{
+    m_leftMutex.lock();
+    m_leftDir = QDir(path);
+    m_leftMutex.unlock();
+}
+
+QString MainWindow::getRightDirPath()
+{
     m_rightMutex.lock();
-    path = m_rightDir.absolutePath();
+    QString path = m_rightDir.absolutePath();
     m_rightMutex.unlock();
-    showDir(m_rightTable, path);
+    return path;
+}
+
+void MainWindow::setRightDirPath(QString path)
+{
+    m_rightMutex.lock();
+    m_rightDir = QDir(path);
+    m_rightMutex.unlock();
 }
 
