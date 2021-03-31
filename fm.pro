@@ -11,12 +11,13 @@ LIBS += $$QT_LIBRARY_PATH/libQt5Widgets.so
 
 TEMPLATE = app
 
+CONFIG += c++1z
+
 QT += core
 QT += widgets
 
 TARGET = fm
 
-HEADERS += MainWindow.h ExecThread.h 
-
-SOURCES += main.cpp MainWindow.cpp ExecThread.cpp
+HEADERS += MainWindow.h ExecThread.h FileNameDialog.h
+SOURCES += main.cpp MainWindow.cpp ExecThread.cpp FileNameDialog.cpp
 

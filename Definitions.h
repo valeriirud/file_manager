@@ -5,8 +5,12 @@
 #define APPLICATION_NAME "fm.app"
 #define APPLICATION_TITLE "File Manager 0.1"
 
-#define CMP_COPY "rsync -ah --progress \"%1\" \"%2\""
-#define CMP_DELETE "rm -rfv \"%1\""
+#define CMD_COPY "rsync -ah --progress \"%1\" \"%2\""
+#define CMD_DELETE "rm -rfv \"%1\""
+#define CMD_MOVE "mv \"%1\" \"%2\""
+#define CMD_SIZE "du -h %1"
+#define CMD_ZIP "zip -rdbj \"%1\" \"%2\""
+#define CMD_UNZIP "unzip -d \"%1\" \"%2\""
 
 #define ITEM_ICON 0
 #define ITEM_NAME 1

@@ -9,10 +9,6 @@ ExecThread::ExecThread(QWidget *parent)
     : QThread(parent)
 {
     m_mainWindow = (MainWindow*)parent;
-    //QObject::connect(this, SIGNAL(sigShowMessage1(QString)),
-    //                m_mainWindow, SLOT(showMessage1(QString)));
-    //QObject::connect(this, SIGNAL(sigShowMessage2(QString)),
-    //                m_mainWindow, SLOT(showMessage2(QString)));
     QObject::connect(this, SIGNAL(sigShowMessage(QString, QString)),
                     m_mainWindow, SLOT(showMessage(QString, QString)));
     QObject::connect(this, SIGNAL(sigCmdCompleted()),
@@ -66,6 +62,7 @@ std::string ExecThread::exec(std::string cmd)
         size_t rd = fread(buffer, 1, 1, f);
         if(rd > 0)
         {
+            //std::cout << std::hex << (int)(buffer[0]) << std::endl;
             if(buffer[0] == 0xa)
             {
                 s1 = QString::fromStdString(output);

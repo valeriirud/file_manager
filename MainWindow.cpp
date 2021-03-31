@@ -1,5 +1,6 @@
 
 #include "Definitions.h"
+#include "FileNameDialog.h"
 #include "MainWindow.h"
 
 #include <QtCore/QSettings>
@@ -16,6 +17,7 @@
 #include <QFileIconProvider>
 #include <QDateTime>
 #include <QDebug>
+#include <QDesktopServices>
 #include <QMenuBar>
 #include <QPixmap>
 #include <QStatusBar>
@@ -66,7 +68,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     m_active = ActiveTable::NONE;
     
-    m_execThread = new ExecThread(this);
+    //m_execThread = new ExecThread(this);
 }
 
 
@@ -357,7 +359,6 @@ void MainWindow::initMenu()
     menuBar()->addMenu("&File");
     menuBar()->addMenu("&Edit");
     menuBar()->addMenu("&View");
-    menuBar()->addMenu("&Simulate");
     menuBar()->addMenu("&Help");
 }
 
@@ -367,7 +368,7 @@ void MainWindow::initStatusbar()
     m_labelStatus1 = new QLabel(sb);
     sb->addWidget(m_labelStatus1);
     m_labelStatus2 = new QLabel(sb);
-    sb->addWidget(m_labelStatus2);
+    sb->addWidget(m_labelStatus2);    
 }
 
 void MainWindow::initToolbar()
@@ -377,27 +378,41 @@ void MainWindow::initToolbar()
     QPixmap movepix("icons/move.png");
     QPixmap deletepix("icons/delete.png");
     QPixmap zippix("icons/zip.png");
+    QPixmap homepix("icons/home.png");
+    QPixmap syncpix("icons/sync.png");
+    QPixmap sizepix("icons/size.png");
     QPixmap quitpix("icons/quit.png");
     
     QToolBar *toolbar = addToolBar("main toolbar");
     toolbar->setObjectName("MainToolbar");
     
-    QAction *newFolderAction = toolbar->addAction(QIcon(newpix), "New Folder");
-    QObject::connect(newFolderAction, SIGNAL(triggered()), this, SLOT(cmdNewFolder()));
+    QAction *actionNewFolder = toolbar->addAction(QIcon(newpix), "New Folder");
+    QObject::connect(actionNewFolder, SIGNAL(triggered()), this, SLOT(cmdNewFolder()));
     
-    QAction *copyAction = toolbar->addAction(QIcon(copypix), "Copy");
-    QObject::connect(copyAction, SIGNAL(triggered()), this, SLOT(cmdCopy()));
+    QAction *actionCopy = toolbar->addAction(QIcon(copypix), "Copy");
+    QObject::connect(actionCopy, SIGNAL(triggered()), this, SLOT(cmdCopy()));
     
-    toolbar->addAction(QIcon(movepix), "Move");
+    QAction *actionMove = toolbar->addAction(QIcon(movepix), "Move");
+    QObject::connect(actionMove, SIGNAL(triggered()), this, SLOT(cmdMove()));
     
-    QAction *deleteAction = toolbar->addAction(QIcon(deletepix), "Delete");
-    QObject::connect(deleteAction, SIGNAL(triggered()), this, SLOT(cmdDelete()));
+    QAction *actionDelete = toolbar->addAction(QIcon(deletepix), "Delete");
+    QObject::connect(actionDelete, SIGNAL(triggered()), this, SLOT(cmdDelete()));
     
-    toolbar->addAction(QIcon(zippix), "Compress");
+    QAction *actionZip = toolbar->addAction(QIcon(zippix), "Compress");
+    QObject::connect(actionZip, SIGNAL(triggered()), this, SLOT(cmdCompress()));
     toolbar->addSeparator();
+    
+    QAction *actionHome = toolbar->addAction(QIcon(homepix), "Home");
+    QObject::connect(actionHome, SIGNAL(triggered()), this, SLOT(cmdHome()));
+    
+    QAction *actionSync = toolbar->addAction(QIcon(syncpix), "Sync");
+    QObject::connect(actionSync, SIGNAL(triggered()), this, SLOT(cmdSync()));
+    
+    QAction *actionSize = toolbar->addAction(QIcon(sizepix), "Size");
+    QObject::connect(actionSize, SIGNAL(triggered()), this, SLOT(cmdSize()));
 
-    QAction *quit = toolbar->addAction(QIcon(quitpix), "Quit Application");
-    connect(quit, &QAction::triggered, qApp, &QApplication::quit);
+    QAction *actionQuit = toolbar->addAction(QIcon(quitpix), "Quit Application");
+    connect(actionQuit, &QAction::triggered, qApp, &QApplication::quit);
 }
 
 QDir MainWindow::showParentDir(QTableWidget* table, QDir dir)
@@ -440,6 +455,15 @@ QDir MainWindow::doubleClickHandler(QTableWidget* table,
         QDir newDir = QDir(newName);
         showDir(table, newName);
         return newDir;
+    }
+    else
+    {
+        b = fileInfo.isFile();
+        if(b)
+        {
+            QString fileName = "file:///" + fileInfo.absoluteFilePath();
+            QDesktopServices::openUrl(QUrl(fileName, QUrl::TolerantMode));
+        }
     }
     
     return dir;
@@ -513,38 +537,104 @@ QTableWidget* MainWindow::getSrcTable()
     return table;
 }
 
-void MainWindow::cmdCopy()
+QFileInfo MainWindow::getSelecterFileInfo()
 {
-    QTableWidget* tableSrc = getSrcTable();
-    QTableWidget* tableDst = getDstTable();
+    QFileInfo fileInfo;
     QString pathSrc = getSrcPath();
     QDir dirSrc(pathSrc);
-    
-    QString pathDst = getDstPath();
-    QDir dirDst(pathDst);
-    
-    QFileInfoList files = dirSrc.entryInfoList();    
-    
-    int cols = tableSrc->columnCount();
+    QTableWidget* tableSrc = getSrcTable();
     QList<QTableWidgetItem*> list = tableSrc->selectedItems();
-    int items = list.count();    
-    for(int i = 0; i < items; i ++)
+    int cols = tableSrc->columnCount();
+    int items = list.count(); 
+    QFileInfoList files = dirSrc.entryInfoList();
+    
+    if(items == cols)
     {
-        QTableWidgetItem* item = list.at(i);
+        QTableWidgetItem* item = list.at(0);
         int row = item->row();
+        QDir dirSrc(pathSrc);
+        QFileInfoList files = dirSrc.entryInfoList();
         // skip "." (row - 1)
         // skip ".." (row)
-        QFileInfo fileInfo = files.at(row + 1);
-        QString path = fileInfo.absoluteFilePath();
-        QString cmd = QString(CMP_COPY).arg(path).arg(pathDst);
-        m_execThread->init(cmd);
-        m_execThread->start();
-        i += cols;
+        fileInfo = files.at(row + 1);        
     }
-    showDir(tableDst, pathDst);
+    
+    return fileInfo;
 }
 
-void MainWindow::cmdNewFolder(void)
+void MainWindow::cmdCopy()
+{
+    cmdTemplate(CMD_COPY, false);
+}
+
+void MainWindow::cmdCompress()
+{
+    QString cmd = CMD_ZIP;
+    
+    QFileInfo fileInfo = getSelecterFileInfo();
+    QString fileType = fileInfo.completeSuffix();
+    if(fileType == "zip")
+    {
+        cmd = CMD_UNZIP;
+    }
+
+    cmdTemplate(cmd, true);
+}
+
+void MainWindow::cmdMove()
+{
+    QString pathSrc = getSrcPath();
+    QString pathDst = getDstPath();
+    if(pathSrc != pathDst) 
+    {
+        cmdTemplate(CMD_MOVE, false);
+        return;
+    }
+    
+    // rename
+    QFileInfo fileInfo = getSelecterFileInfo();
+    if(! fileInfo.isFile() && ! fileInfo.isDir())
+    {
+        return;
+    }
+    
+    QString fileName = fileInfo.fileName();
+    FileNameDialog fileNameDialog;
+    fileNameDialog.init(fileName);
+    if(fileNameDialog.exec() == QDialog::Accepted)
+    {
+        QString newName = fileNameDialog.getName();
+        
+        pathSrc += QDir::separator() + fileName;
+        pathDst += QDir::separator() + newName;
+        
+        QString cmd = QString(CMD_MOVE).arg(pathSrc).arg(pathDst);
+        
+        m_threads.append(new ExecThread(this));
+        int id = m_threads.count() - 1;
+        m_threads.at(id)->init(cmd);
+        m_threads.at(id)->start();
+    }
+}
+
+void MainWindow::cmdSize()
+{
+    QFileInfo fileInfo = getSelecterFileInfo();
+    if(! fileInfo.isDir())
+    {
+        return;
+    }
+    
+    QString fileName = fileInfo.absoluteFilePath();
+    QString cmd = QString(CMD_SIZE).arg(fileName);
+        
+    m_threads.append(new ExecThread(this));
+    int id = m_threads.count() - 1;
+    m_threads.at(id)->init(cmd);
+    m_threads.at(id)->start();
+}
+
+void MainWindow::cmdNewFolder()
 {
     QTableWidget* table = getSrcTable();
     QString pathSrc = getSrcPath();
@@ -553,7 +643,45 @@ void MainWindow::cmdNewFolder(void)
     showDir(table, dirSrc);
 }
 
-void MainWindow::cmdDelete(void)
+void MainWindow::cmdSync()
+{
+    QString path;
+    switch(m_active)
+    {
+        case ActiveTable::LEFT:
+            path = getLeftDirPath();
+            setRightDirPath(path);
+            showDir(m_rightTable, path);
+            break;
+        case ActiveTable::RIGHT:
+            path = getRightDirPath();
+            setLeftDirPath(path);
+            showDir(m_leftTable, path);
+            break;
+        default:
+            break;
+    }
+}
+
+void MainWindow::cmdHome()
+{
+    QString path = QDir::homePath();
+    switch(m_active)
+    {
+        case ActiveTable::RIGHT:
+            setRightDirPath(path);
+            showDir(m_rightTable, path);
+            break;
+        case ActiveTable::LEFT:
+            setLeftDirPath(path);
+            showDir(m_leftTable, path);
+            break;
+        default:
+            break;
+    }
+}
+
+void MainWindow::cmdDelete()
 {
     QTableWidget* table = getSrcTable();
     QString pathSrc = getSrcPath();
@@ -577,11 +705,77 @@ void MainWindow::cmdDelete(void)
     
     for(QString path: selected)
     {
-        QString cmd = QString(CMP_DELETE).arg(path);
+        QString cmd = QString(CMD_DELETE).arg(path);
         
-        m_execThread->init(cmd);
-        m_execThread->start();
+        
+        m_threads.append(new ExecThread(this));
+        int id = m_threads.count() - 1;
+        m_threads.at(id)->init(cmd);
+        m_threads.at(id)->start();
+        //m_execThread->init(cmd);
+        //m_execThread->start();
     }
+}
+
+// copy, move, zip, unzip
+void MainWindow::cmdTemplate(QString cmdTemplate, bool compress)
+{
+    
+    QString cmd = "";
+    QTableWidget* tableSrc = getSrcTable();
+    QTableWidget* tableDst = getDstTable();
+    QString pathSrc = getSrcPath();
+    QDir dirSrc(pathSrc);
+    
+    QString pathDst = getDstPath();
+    QDir dirDst(pathDst);
+    
+    QFileInfoList files = dirSrc.entryInfoList();    
+    
+    int cols = tableSrc->columnCount();
+    QList<QTableWidgetItem*> list = tableSrc->selectedItems();
+    int items = list.count();    
+    for(int i = 0; i < items; i ++)
+    {
+        QTableWidgetItem* item = list.at(i);
+        int row = item->row();
+        // skip "." (row - 1)
+        // skip ".." (row)
+        QFileInfo fileInfo = files.at(row + 1);
+        QString path = fileInfo.absoluteFilePath();
+        
+        if(! compress) // copy, move
+        {
+            cmd = QString(cmdTemplate).arg(path).arg(pathDst);
+        }
+        else // zip, unzip
+        {
+            QString dst = pathDst;
+            QString fileName = fileInfo.baseName();
+            QString fileType = fileInfo.completeSuffix();
+            if(fileType == "zip")// unzip
+            {
+                dst += QDir::separator() + fileInfo.baseName();
+            }
+            else
+            {
+                dst += QDir::separator() + fileName + ".zip";
+            }
+            cmd = QString(cmdTemplate).arg(dst).arg(path);
+        }
+        
+        //qDebug() << cmd;
+        
+        m_threads.append(new ExecThread(this));
+        int id = m_threads.count() - 1;
+        m_threads.at(id)->init(cmd);
+        m_threads.at(id)->start();
+        
+        //m_execThread->init(cmd);
+        //m_execThread->start();
+        i += cols;
+    }
+    showDir(tableDst, pathDst);
 }
 
 void MainWindow::clearSelection(QTableWidget* table)
@@ -619,7 +813,7 @@ void MainWindow::showMessage(QString s1, QString s2)
 void MainWindow::cmdCompleted()
 {
     showDirs();
-    showMessage("", "");
+    //showMessage("", "");
 }
 
 void MainWindow::showDirs()

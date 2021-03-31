@@ -35,9 +35,11 @@ class MainWindow : public QMainWindow
 public:
 	MainWindow(QWidget *parent = 0);
 	~MainWindow();
-
+    
 public slots:
     void cmdCopy(void);
+    void cmdCompress(void);
+    void cmdMove(void);
     void cmdDelete(void);
     void cmdNewFolder(void);
 	void leftDoubleClickHandler(int, int);
@@ -49,6 +51,9 @@ public slots:
     void showMessage(QString);
     void showMessage(QString, QString);
     void cmdCompleted();
+    void cmdSync();
+    void cmdSize();
+    void cmdHome();
 
 private:
     QMutex m_leftMutex;
@@ -61,8 +66,8 @@ private:
     QDir m_leftDir;
     QDir m_rightDir;
     ActiveTable m_active;
-    
-    ExecThread* m_execThread;
+    QList<ExecThread*> m_threads;    
+    //ExecThread* m_execThread;
     
     void initMenu(void);
     void initToolbar(void);
@@ -92,6 +97,8 @@ private:
     QString getRightDirPath();
     void setLeftDirPath(QString);
     void setRightDirPath(QString);
+    void cmdTemplate(QString, bool);
+    QFileInfo getSelecterFileInfo();
 protected:
 	void closeEvent(QCloseEvent*);
 };
